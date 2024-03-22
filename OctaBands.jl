@@ -19,7 +19,7 @@ module OctaBands
 
     roundIfExact(x) = abs(x%1.0) <= 0.05 ? string(Int(round(x))) : string(round(x,digits=1))
 
-    freqToBandName(f) = f < 1010.0 ? roundIfExact(f) : roundIfExact(f/1000.0) * "k"
+    freqToBandName(f) = f < 999.0 ? roundIfExact(f) : roundIfExact(f/1000.0) * "k"
 
     struct BandFrame{T} <: AbstractBandType 
         data::AbstractDataFrame 
@@ -37,20 +37,27 @@ module OctaBands
         BandFrame{:arb}(df, bandNames)
     end
 
-    function OctaveBandFrame(data::AbstractArray, startFreq)
+    function ISOBandFrame(data::AbstractArray, startFreq, ISOType)
         nbands = size(data)[end]
-        bands = (startFreq .* 2 .^ (0:nbands-1))
-        bandNames = freqToBandName.(bands)
+        if ISOType == :oct
+            div = 1
+        elseif ISOType == :third
+            div = 3
+        end
+        bands = (startFreq .* 2 .^ ((0:nbands-1)./div))
+        m = matchVecs(bands, ISObandFreq[ISOType])
+        ISObands = ISObandFreq[ISOType][m]
+        bandNames = freqToBandName.(ISObands)
         df = DataFrame([b=>vals for (b, vals) in zip(bandNames, eachcol(data))])
-        BandFrame{:oct}(df, bands)
+        BandFrame{ISOType}(df, bands)
+    end
+
+    function OctaveBandFrame(data::AbstractArray, startFreq)
+        ISOBandFrame(data, startFreq, :oct)
     end
 
     function ThirdOctaveBandFrame(data::AbstractArray, startFreq)
-        nbands = size(data)[end]
-        bands = (startFreq .* 2 .^ ((0:nbands-1)./3))
-        bandNames = freqToBandName.(bands)
-        df = DataFrame([b=>vals for (b, vals) in zip(bandNames, eachcol(data))])
-        BandFrame{:third}(df, bands)
+        ISOBandFrame(data, startFreq, :third)
     end
 
     function add(bf1::T, bf2::T) where {T <: AbstractBandType}
@@ -67,6 +74,29 @@ module OctaBands
         data = vcat(bf1.data, bf2.data, cols = :union)
         bands = [bdict[l] for l in names(data)]
         BandFrame{T}(data, bands)
+    end
+
+    function matchVecs(x, y; reltol=0.1)
+        mask = ones(Bool, size(y))
+        corr = zeros(Int, size(x))
+        for (xidx, xx) in enumerate(x)
+            println(xidx)
+            yremaining = y[mask]
+            reldif = abs.((yremaining .- xx)/xx)
+            nearestidx = argmin(reldif)
+            if reldif[nearestidx] <= reltol
+                origidx = findall(mask)[nearestidx] 
+                corr[xidx] = origidx
+                mask[origidx] = false
+            end
+        end
+        corr
+    end
+
+    function alignToISO(bf::AbstractBandType; reltol=.01)
+        freqs = bf
+        for f in freqs
+        end
     end
 
 end
